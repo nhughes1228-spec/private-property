@@ -77,6 +77,20 @@ function effectiveNetRent(property) {
   return property.grossRent - effectiveUpkeep(property);
 }
 
+function effectiveIncomePerSecond(property) {
+  return effectiveNetRent(property) / effectiveCycleTime(property);
+}
+
+function formatMoneyPerSecond(value) {
+  const formatted = Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: value >= 10 ? 1 : 2,
+    maximumFractionDigits: value >= 10 ? 1 : 2,
+  }).format(value);
+  return `${formatted}/sec`;
+}
+
 function createNewState() {
   return {
     cash: 750,
@@ -194,6 +208,7 @@ function renderProperties() {
           <div class="metric"><span>Gross rent</span><strong>${formatMoney(property.grossRent)}</strong></div>
           <div class="metric"><span>Upkeep</span><strong>${formatMoney(effectiveUpkeep(property))}</strong></div>
           <div class="metric"><span>${netLabel}</span><strong>${formatMoney(effectiveNetRent(property))}</strong></div>
+          <div class="metric"><span>Income/sec</span><strong>${formatMoneyPerSecond(effectiveIncomePerSecond(property))}</strong></div>
           ${managerLine}
         </div>
         <div class="card-actions">${actions}</div>
@@ -540,6 +555,7 @@ function renderGameToText() {
       effectiveCycleTime: effectiveCycleTime(property),
       effectiveUpkeep: effectiveUpkeep(property),
       effectiveNetRent: effectiveNetRent(property),
+      effectiveIncomePerSecond: effectiveIncomePerSecond(property),
     })),
     coordinateSystem: "Map tile positions are percentages from the top-left of the map; x increases right, y increases down.",
   };
