@@ -2,6 +2,7 @@ const STORAGE_KEY = "private-property-save-v1";
 const AUTOSAVE_MS = 10000;
 const MANAGER_COST_RATE = 0.5;
 const MANAGER_SPEED_MULTIPLIER = 1.15;
+const OFFLINE_CAP_SECONDS = 60 * 60 * 4;
 
 const PROPERTY_TEMPLATES = [
   { id: "starter-bungalow", name: "Starter Bungalow", price: 500, grossRent: 25, upkeep: 3, cycleTime: 10, map: { x: "18%", y: "68%" } },
@@ -24,6 +25,14 @@ const PROPERTY_TEMPLATES = [
   { id: "small-apartment-building", name: "Small Apartment Building", price: 275000, grossRent: 24000, upkeep: 5500, cycleTime: 180, map: { x: "70%", y: "10%" } },
 ];
 
+const UPGRADE_TEMPLATES = [
+  { id: "curb-appeal", name: "Curb Appeal", costRate: 0.25, description: "+10% gross rent", rentMultiplier: 1.1, upkeepMultiplier: 1, speedMultiplier: 1 },
+  { id: "efficient-appliances", name: "Efficient Appliances", costRate: 0.35, description: "-15% upkeep", rentMultiplier: 1, upkeepMultiplier: 0.85, speedMultiplier: 1 },
+  { id: "premium-fixtures", name: "Premium Fixtures", costRate: 0.55, description: "+15% gross rent", rentMultiplier: 1.15, upkeepMultiplier: 1, speedMultiplier: 1 },
+  { id: "preventive-maintenance", name: "Preventive Maintenance", costRate: 0.7, description: "-20% upkeep", rentMultiplier: 1, upkeepMultiplier: 0.8, speedMultiplier: 1 },
+  { id: "smart-access", name: "Smart Access", costRate: 0.85, description: "10% faster cycles", rentMultiplier: 1, upkeepMultiplier: 1, speedMultiplier: 1.1 },
+];
+
 const defaultSettings = {
   sound: false,
   compactNumbers: false,
@@ -37,6 +46,7 @@ const defaultStats = {
   lifetimeNetIncome: 0,
   manualCollections: 0,
   automaticCollections: 0,
+  offlineCollections: 0,
   timePlayed: 0,
 };
 
@@ -65,16 +75,45 @@ function managerCost(property) {
   return Math.round(property.price * MANAGER_COST_RATE);
 }
 
-function effectiveCycleTime(property) {
-  return property.managerHired ? property.cycleTime / MANAGER_SPEED_MULTIPLIER : property.cycleTime;
+function hasUpgrade(property, upgradeId) {
+  return Array.isArray(property.upgrades) && property.upgrades.includes(upgradeId);
+}
+
+function upgradeCost(property, upgrade) {
+  return Math.round(property.price * upgrade.costRate);
+}
+
+function upgradeMultipliers(property) {
+  return UPGRADE_TEMPLATES.reduce((multipliers, upgrade) => {
+    if (!hasUpgrade(property, upgrade.id)) return multipliers;
+    return {
+      rent: multipliers.rent * upgrade.rentMultiplier,
+      upkeep: multipliers.upkeep * upgrade.upkeepMultiplier,
+      speed: multipliers.speed * upgrade.speedMultiplier,
+    };
+  }, { rent: 1, upkeep: 1, speed: 1 });
+}
+
+function effectiveGrossRent(property) {
+  return property.grossRent * upgradeMultipliers(property).rent;
+}
+
+function baseEffectiveUpkeep(property) {
+  return property.upkeep * upgradeMultipliers(property).upkeep;
 }
 
 function effectiveUpkeep(property) {
-  return property.managerHired ? property.upkeep * 2 : property.upkeep;
+  const baseUpkeep = baseEffectiveUpkeep(property);
+  return property.managerHired ? baseUpkeep * 2 : baseUpkeep;
+}
+
+function effectiveCycleTime(property) {
+  const speed = upgradeMultipliers(property).speed * (property.managerHired ? MANAGER_SPEED_MULTIPLIER : 1);
+  return property.cycleTime / speed;
 }
 
 function effectiveNetRent(property) {
-  return property.grossRent - effectiveUpkeep(property);
+  return effectiveGrossRent(property) - effectiveUpkeep(property);
 }
 
 function effectiveIncomePerSecond(property) {
@@ -99,6 +138,7 @@ function createNewState() {
       managerCost: managerCost(property),
       managerSalary: 0,
       netRent: property.grossRent - property.upkeep,
+      upgrades: [],
       owned: false,
       progress: 0,
       readyToCollect: false,
@@ -167,7 +207,7 @@ function render() {
 
 function renderChrome() {
   dom.cashDisplay.textContent = formatMoney(state.cash);
-  dom.managerUnlockNote.textContent = "Property managers are available immediately if you can pay their signing bonus.";
+  dom.managerUnlockNote.textContent = "Managers are available immediately. Owned buildings can also buy upgrades.";
   document.body.classList.toggle("reduced-motion", state.settings.reducedMotion);
 }
 
@@ -184,12 +224,15 @@ function renderProperties() {
     const netLabel = property.managerHired ? "Managed net" : "Net rent";
     const cycleLabel = property.managerHired
       ? `${effectiveCycleTime(property).toFixed(1)}s managed cycle`
-      : `${property.cycleTime}s rent cycle`;
+      : `${effectiveCycleTime(property).toFixed(1)}s rent cycle`;
     const managerLine = property.owned
       ? `<div class="metric"><span>Manager</span><strong>${property.managerHired ? "Hired: auto +15%, upkeep x2" : `${formatMoney(managerCost(property))} bonus`}</strong></div>`
       : "";
+    const upgradesLine = property.owned
+      ? `<div class="metric"><span>Upgrades</span><strong>${property.upgrades.length}/${UPGRADE_TEMPLATES.length}</strong></div>`
+      : "";
     const actions = property.owned
-      ? `<button class="secondary-action" data-action="view-map" data-id="${property.id}" type="button">View on Map</button>${managerButtonMarkup(property)}`
+      ? `<button class="secondary-action" data-action="view-map" data-id="${property.id}" type="button">View on Map</button>${managerButtonMarkup(property)}${upgradeListMarkup(property)}`
       : `<button class="primary-action" data-action="buy" data-id="${property.id}" ${state.cash < property.price ? "disabled" : ""} type="button">Buy for ${formatMoney(property.price)}</button>`;
 
     return `
@@ -203,11 +246,12 @@ function renderProperties() {
         </div>
         <div class="money-grid">
           <div class="metric"><span>Price</span><strong>${formatMoney(property.price)}</strong></div>
-          <div class="metric"><span>Gross rent</span><strong>${formatMoney(property.grossRent)}</strong></div>
+          <div class="metric"><span>Gross rent</span><strong>${formatMoney(effectiveGrossRent(property))}</strong></div>
           <div class="metric"><span>Upkeep</span><strong>${formatMoney(effectiveUpkeep(property))}</strong></div>
           <div class="metric"><span>${netLabel}</span><strong>${formatMoney(effectiveNetRent(property))}</strong></div>
           <div class="metric"><span>Income/sec</span><strong>${formatMoneyPerSecond(effectiveIncomePerSecond(property))}</strong></div>
           ${managerLine}
+          ${upgradesLine}
         </div>
         <div class="card-actions">${actions}</div>
       </article>
@@ -220,6 +264,17 @@ function managerButtonMarkup(property) {
   const cost = managerCost(property);
   const disabled = state.cash < cost ? "disabled" : "";
   return `<button data-action="hire-manager" data-id="${property.id}" ${disabled} type="button">Hire Manager ${formatMoney(cost)}</button>`;
+}
+
+function upgradeListMarkup(property) {
+  const buttons = UPGRADE_TEMPLATES.map((upgrade) => {
+    const purchased = hasUpgrade(property, upgrade.id);
+    const cost = upgradeCost(property, upgrade);
+    const disabled = purchased || state.cash < cost ? "disabled" : "";
+    const label = purchased ? `${upgrade.name} purchased` : `${upgrade.name} ${formatMoney(cost)}`;
+    return `<button class="upgrade-action" data-action="buy-upgrade" data-id="${property.id}" data-upgrade="${upgrade.id}" ${disabled} type="button"><span>${label}</span><small>${upgrade.description}</small></button>`;
+  }).join("");
+  return `<div class="upgrade-list"><strong>Building upgrades</strong>${buttons}</div>`;
 }
 
 function renderMap() {
@@ -261,6 +316,7 @@ function updateMapProgress() {
 function renderMenu() {
   const owned = ownedProperties();
   const managerCount = owned.filter((property) => property.managerHired).length;
+  const upgradeCount = owned.reduce((total, property) => total + property.upgrades.length, 0);
   const stats = [
     ["Current cash", formatMoney(state.cash)],
     ["Lifetime gross", formatMoney(state.stats.lifetimeGrossRent)],
@@ -269,8 +325,10 @@ function renderMenu() {
     ["Lifetime net", formatMoney(state.stats.lifetimeNetIncome)],
     ["Properties owned", `${owned.length}`],
     ["Managers hired", `${managerCount}`],
+    ["Upgrades purchased", `${upgradeCount}`],
     ["Manual collections", formatNumber(state.stats.manualCollections)],
     ["Auto collections", formatNumber(state.stats.automaticCollections)],
+    ["Offline collections", formatNumber(state.stats.offlineCollections || 0)],
     ["Time played", formatTime(state.stats.timePlayed)],
   ];
   dom.statsGrid.innerHTML = stats.map(([label, value]) => `
@@ -294,28 +352,48 @@ function buyProperty(id) {
   setScreen("map");
 }
 
+function buyUpgrade(propertyId, upgradeId) {
+  const property = state.properties.find((item) => item.id === propertyId);
+  const upgrade = UPGRADE_TEMPLATES.find((item) => item.id === upgradeId);
+  if (!property || !property.owned || !upgrade || hasUpgrade(property, upgrade.id)) return;
+  const cost = upgradeCost(property, upgrade);
+  if (state.cash < cost) return;
+  state.cash -= cost;
+  property.upgrades.push(upgrade.id);
+  toast(`${upgrade.name} added to ${property.name}`);
+  saveGame("Saved after upgrade");
+  render();
+}
+
 function collectRent(id, automatic = false, sourceElement = null) {
   const property = state.properties.find((item) => item.id === id);
   if (!property || !property.owned) return;
   if (!automatic && (!property.readyToCollect || property.managerHired)) return;
 
-  const appliedUpkeep = effectiveUpkeep(property);
-  const managerOverhead = property.managerHired ? property.upkeep : 0;
-  const net = property.grossRent - appliedUpkeep;
-  state.cash += net;
-  state.stats.lifetimeGrossRent += property.grossRent;
-  state.stats.lifetimeUpkeep += appliedUpkeep;
-  state.stats.lifetimeManagerSalaries += managerOverhead;
-  state.stats.lifetimeNetIncome += net;
-  state.stats[automatic ? "automaticCollections" : "manualCollections"] += 1;
+  applyRentCollection(property, automatic ? "automatic" : "manual", 1);
   property.progress = 0;
   property.readyToCollect = false;
 
   if (!automatic) {
-    showFloatingMoney(formatMoney(net, { sign: true }), sourceElement);
+    showFloatingMoney(formatMoney(effectiveNetRent(property), { sign: true }), sourceElement);
     playCollectSound();
     saveGame("Saved after rent collection");
   }
+}
+
+function applyRentCollection(property, type, count) {
+  const gross = effectiveGrossRent(property) * count;
+  const upkeep = effectiveUpkeep(property) * count;
+  const managerOverhead = property.managerHired ? baseEffectiveUpkeep(property) * count : 0;
+  const net = gross - upkeep;
+  state.cash += net;
+  state.stats.lifetimeGrossRent += gross;
+  state.stats.lifetimeUpkeep += upkeep;
+  state.stats.lifetimeManagerSalaries += managerOverhead;
+  state.stats.lifetimeNetIncome += net;
+  if (type === "offline") state.stats.offlineCollections = (state.stats.offlineCollections || 0) + count;
+  else state.stats[type === "automatic" ? "automaticCollections" : "manualCollections"] += count;
+  return net;
 }
 
 function hireManager(id) {
@@ -353,6 +431,25 @@ function update(dt) {
   });
 }
 
+function applyOfflineProgress(elapsedSeconds) {
+  if (elapsedSeconds <= 0) return 0;
+  let offlineNet = 0;
+  ownedProperties().forEach((property) => {
+    const cycleTime = effectiveCycleTime(property);
+    if (property.managerHired) {
+      const totalProgress = property.progress + elapsedSeconds;
+      const cycles = Math.floor(totalProgress / cycleTime);
+      property.progress = totalProgress % cycleTime;
+      property.readyToCollect = false;
+      if (cycles > 0) offlineNet += applyRentCollection(property, "offline", cycles);
+      return;
+    }
+    property.progress = Math.min(cycleTime, property.progress + elapsedSeconds);
+    property.readyToCollect = property.progress >= cycleTime;
+  });
+  return offlineNet;
+}
+
 function gameLoop(now) {
   const dt = Math.min(1, (now - lastFrameTime) / 1000);
   lastFrameTime = now;
@@ -374,6 +471,7 @@ function serializeState() {
       progress: property.progress,
       readyToCollect: property.readyToCollect,
       managerHired: property.managerHired,
+      upgrades: property.upgrades,
     })),
     stats: state.stats,
     settings: state.settings,
@@ -412,14 +510,18 @@ function loadGame(showToast = true) {
         progress: clampNumber(savedProperty.progress, 0, effectiveCycleTime(property)),
         readyToCollect: Boolean(savedProperty.readyToCollect),
         managerHired: Boolean(savedProperty.managerHired),
+        upgrades: Array.isArray(savedProperty.upgrades) ? savedProperty.upgrades.filter((id) => UPGRADE_TEMPLATES.some((upgrade) => upgrade.id === id)) : [],
       };
     });
     state = fresh;
+    const elapsedSeconds = state.lastSavedAt ? Math.min(OFFLINE_CAP_SECONDS, Math.max(0, (Date.now() - state.lastSavedAt) / 1000)) : 0;
+    const offlineNet = applyOfflineProgress(elapsedSeconds);
     autosaveLabel = state.lastSavedAt
       ? `Loaded save from ${new Date(state.lastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
       : "Loaded save";
-    if (showToast) toast("Game loaded");
+    if (showToast) toast(offlineNet > 0 ? `Offline earnings: ${formatMoney(offlineNet)}` : "Game loaded");
     render();
+    if (offlineNet > 0) saveGame("Saved offline progress");
     return true;
   } catch (error) {
     console.error("Could not load save", error);
@@ -492,6 +594,7 @@ function bindEvents() {
     if (action === "view-map") setScreen("map");
     if (action === "collect") collectRent(id, false, button);
     if (action === "hire-manager") hireManager(id);
+    if (action === "buy-upgrade") buyUpgrade(id, button.dataset.upgrade);
   });
 
   document.querySelector("#saveBtn").addEventListener("click", () => {
@@ -536,6 +639,7 @@ function renderGameToText() {
       netIncome: Math.round(state.stats.lifetimeNetIncome),
       manualCollections: state.stats.manualCollections,
       automaticCollections: state.stats.automaticCollections,
+      offlineCollections: state.stats.offlineCollections || 0,
       timePlayedSeconds: Math.floor(state.stats.timePlayed),
     },
     visibleProperties: state.properties.map((property) => ({
@@ -546,6 +650,8 @@ function renderGameToText() {
       readyToCollect: property.readyToCollect,
       managerHired: property.managerHired,
       managerCost: managerCost(property),
+      upgrades: property.upgrades,
+      effectiveGrossRent: effectiveGrossRent(property),
       effectiveCycleTime: effectiveCycleTime(property),
       effectiveUpkeep: effectiveUpkeep(property),
       effectiveNetRent: effectiveNetRent(property),
