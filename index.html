@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Private Property</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Real Estate Tycoon</p>
+          <h1>Private Property</h1>
+        </div>
+        <div class="cash-pill">
+          <span>Cash</span>
+          <strong id="cashDisplay">$750</strong>
+        </div>
+      </header>
+
+      <main>
+        <section id="propertiesScreen" class="screen active" aria-labelledby="propertiesTitle">
+          <div class="screen-heading">
+            <div>
+              <h2 id="propertiesTitle">Properties</h2>
+              <p id="managerUnlockNote" class="muted"></p>
+            </div>
+          </div>
+          <div id="propertiesList" class="property-list"></div>
+        </section>
+
+        <section id="mapScreen" class="screen" aria-labelledby="mapTitle">
+          <div class="screen-heading">
+            <div>
+              <h2 id="mapTitle">Neighborhood Map</h2>
+              <p class="muted">Tap a full rent circle to collect from unmanaged homes.</p>
+            </div>
+          </div>
+          <div id="emptyMap" class="empty-state">
+            <strong>No properties yet</strong>
+            <span>Buy your first rental from the Properties screen.</span>
+          </div>
+          <div id="mapGrid" class="map-grid" aria-label="Owned property map"></div>
+        </section>
+
+        <section id="menuScreen" class="screen" aria-labelledby="menuTitle">
+          <div class="screen-heading">
+            <div>
+              <h2 id="menuTitle">Menu</h2>
+              <p class="muted">Portfolio, save, and settings.</p>
+            </div>
+          </div>
+
+          <div class="menu-stack">
+            <article class="panel">
+              <h3>Stats</h3>
+              <div id="statsGrid" class="stats-grid"></div>
+            </article>
+
+            <article class="panel">
+              <h3>Save</h3>
+              <div class="button-row">
+                <button id="saveBtn" class="primary-action" type="button">Save Game</button>
+                <button id="loadBtn" type="button">Load Game</button>
+                <button id="resetBtn" class="danger-action" type="button">Reset Game</button>
+              </div>
+              <p id="autosaveIndicator" class="muted autosave">Autosave ready</p>
+            </article>
+
+            <article class="panel">
+              <h3>Settings</h3>
+              <label class="setting-row">
+                <span>Sound</span>
+                <input id="soundToggle" type="checkbox" role="switch">
+              </label>
+              <label class="setting-row">
+                <span>Compact numbers</span>
+                <input id="compactToggle" type="checkbox" role="switch">
+              </label>
+              <label class="setting-row">
+                <span>Reduced motion</span>
+                <input id="motionToggle" type="checkbox" role="switch">
+              </label>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <button class="nav-btn active" data-screen="properties" type="button">
+          <span aria-hidden="true">🏘️</span>
+          Properties
+        </button>
+        <button class="nav-btn" data-screen="map" type="button">
+          <span aria-hidden="true">🗺️</span>
+          Map
+        </button>
+        <button class="nav-btn" data-screen="menu" type="button">
+          <span aria-hidden="true">☰</span>
+          Menu
+        </button>
+      </nav>
+    </div>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+    <script src="script.js"></script>
+  </body>
+</html>
