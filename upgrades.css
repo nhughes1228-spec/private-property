@@ -1,0 +1,35 @@
+.upgrade-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 4px;
+  padding: 10px;
+  border: 1px solid rgba(39, 127, 87, 0.16);
+  border-radius: 8px;
+  background: rgba(236, 247, 237, 0.62);
+}
+
+.upgrade-list > strong {
+  color: var(--green-dark);
+  font-size: 0.82rem;
+  font-weight: 1000;
+}
+
+.upgrade-action {
+  display: grid;
+  min-height: 48px;
+  justify-items: start;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.upgrade-action span {
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.upgrade-action small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
