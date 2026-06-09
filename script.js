@@ -115,7 +115,7 @@ function ownedProperties() {
 }
 
 function managersUnlocked() {
-  return ownedProperties().length >= 3;
+  return true;
 }
 
 function formatMoney(value, options = {}) {
@@ -167,9 +167,7 @@ function render() {
 
 function renderChrome() {
   dom.cashDisplay.textContent = formatMoney(state.cash);
-  dom.managerUnlockNote.textContent = managersUnlocked()
-    ? "Property managers are unlocked. Managers auto-collect, work 15% faster, and double upkeep."
-    : "Property managers unlock after you own 3 properties.";
+  dom.managerUnlockNote.textContent = "Property managers are available immediately if you can pay their signing bonus.";
   document.body.classList.toggle("reduced-motion", state.settings.reducedMotion);
 }
 
@@ -188,7 +186,7 @@ function renderProperties() {
       ? `${effectiveCycleTime(property).toFixed(1)}s managed cycle`
       : `${property.cycleTime}s rent cycle`;
     const managerLine = property.owned
-      ? `<div class="metric"><span>Manager</span><strong>${property.managerHired ? "Hired: auto +15%, upkeep x2" : managersUnlocked() ? `${formatMoney(managerCost(property))} bonus` : "Locked"}</strong></div>`
+      ? `<div class="metric"><span>Manager</span><strong>${property.managerHired ? "Hired: auto +15%, upkeep x2" : `${formatMoney(managerCost(property))} bonus`}</strong></div>`
       : "";
     const actions = property.owned
       ? `<button class="secondary-action" data-action="view-map" data-id="${property.id}" type="button">View on Map</button>${managerButtonMarkup(property)}`
@@ -219,9 +217,6 @@ function renderProperties() {
 
 function managerButtonMarkup(property) {
   if (!property.owned || property.managerHired) return "";
-  if (!managersUnlocked()) {
-    return `<button data-action="hire-manager" data-id="${property.id}" disabled type="button">Manager Locked</button>`;
-  }
   const cost = managerCost(property);
   const disabled = state.cash < cost ? "disabled" : "";
   return `<button data-action="hire-manager" data-id="${property.id}" ${disabled} type="button">Hire Manager ${formatMoney(cost)}</button>`;
@@ -243,7 +238,6 @@ function renderMap() {
         <span class="house-icon" aria-hidden="true">${property.managerHired ? "🏢" : "🏠"}</span>
         <div class="tile-name">${property.name}</div>
         <div class="tile-status" data-status="${property.id}">${status}</div>
-        ${property.owned && !property.managerHired ? `<div class="card-actions">${managerButtonMarkup(property)}</div>` : ""}
       </article>
     `;
   }).join("");
@@ -326,7 +320,7 @@ function collectRent(id, automatic = false, sourceElement = null) {
 
 function hireManager(id) {
   const property = state.properties.find((item) => item.id === id);
-  if (!property || !property.owned || property.managerHired || !managersUnlocked()) return;
+  if (!property || !property.owned || property.managerHired) return;
   const cost = managerCost(property);
   if (state.cash < cost) return;
   state.cash -= cost;
